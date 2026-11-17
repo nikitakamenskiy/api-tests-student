@@ -27,17 +27,14 @@ go mod tidy
 
 | Переменная | Обязательна | Назначение |
 |---|---|---|
-| `API_URL` | да | Адрес стенда |
 | `TEST_LOGIN` | да | Основной пользователь: у него проверяются избранное и его объявления |
 | `TEST_PASSWORD` | да | Пароль основного пользователя |
 | `TEST_SECOND_LOGIN` | для пакета `favorites` | Второй пользователь: владелец объявлений, которые основной добавляет в избранное. **Должен отличаться от `TEST_LOGIN`** |
 | `TEST_SECOND_PASSWORD` | для пакета `favorites` | Пароль второго пользователя |
-| `DEBUG` | нет | `true` включает вывод запросов и ответов |
 
 Пример `.env.override`:
 
 ```
-API_URL=https://testboard.avito.com
 TEST_LOGIN=your_login
 TEST_PASSWORD=your_password
 TEST_SECOND_LOGIN=your_second_login
