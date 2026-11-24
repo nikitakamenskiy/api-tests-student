@@ -63,7 +63,7 @@ type TestSuite struct {
 	actor models.LoginOkResponse // пользователь, у которого проверяем избранное (TEST_LOGIN)
 	owner models.LoginOkResponse // владелец объявлений, которые actor добавляет в избранное (TEST_SECOND_LOGIN)
 	ads   fixtures.AdvertisementFactory
-
+	favs  fixtures.FavoritesTracker
 	// ad — чужое объявление, готовое к добавлению в избранное. Создаётся перед каждым тестом.
 	ad advModels.Advertisement
 }
@@ -83,9 +83,6 @@ func (s *TestSuite) SetupSuite() {
 
 	require.NotEqual(s.T(), s.actor.User.Id, s.owner.User.Id,
 		"TEST_LOGIN и TEST_SECOND_LOGIN должны быть разными пользователями")
-
-	base.Precondition("Очищаем избранное основного пользователя перед прогоном")
-	fixtures.ClearFavorites(s.T(), s.actor.Token)
 }
 
 func (s *TestSuite) SetupTest() {
@@ -94,8 +91,8 @@ func (s *TestSuite) SetupTest() {
 }
 
 func (s *TestSuite) TearDownTest() {
+	s.favs.Cleanup(s.T(), s.actor.Token)
 	s.ads.Cleanup(s.T())
-	fixtures.ClearFavorites(s.T(), s.actor.Token)
 }
 
 func (s *TestSuite) TearDownSuite() {
@@ -108,7 +105,7 @@ func (s *TestSuite) TestFavoritesFullCycle() {
 	var added favModels.Favorite
 
 	s.Run("Добавляем чужое объявление в избранное", func() {
-		added = favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
+		added = s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
 	})
 
 	s.Run("Проверяем ответ на добавление", func() {
@@ -133,7 +130,7 @@ func (s *TestSuite) TestFavoritesFullCycle() {
 
 	// Возвращаем объявление в избранное для проверки каскадного удаления.
 	s.Run("Снова добавляем объявление в избранное", func() {
-		favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
+		s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
 	})
 
 	s.Run("Владелец удаляет само объявление", func() {
@@ -153,7 +150,7 @@ func (s *TestSuite) TestFavoritesAuthentication() {
 
 	// Подготавливаем состояние, чтобы убедиться, что неавторизованные запросы его не меняют.
 	s.Run("Добавляем объявление в избранное перед проверкой авторизации", func() {
-		favorites.AddFavorite(s.T(), s.actor.Token, addRequest)
+		s.favs.Add(s.T(), s.actor.Token, addRequest)
 	})
 
 	operations := []struct {
@@ -346,7 +343,7 @@ func (s *TestSuite) TestAddDuplicateAdvertisementToFavorites() {
 	var errResponse advModels.CreateErrorResponse
 
 	s.Run("Добавляем объявление в избранное", func() {
-		favorites.AddFavorite(s.T(), s.actor.Token, request)
+		s.favs.Add(s.T(), s.actor.Token, request)
 	})
 
 	s.Run("Повторно добавляем то же объявление в избранное", func() {
@@ -404,7 +401,7 @@ func (s *TestSuite) TestAddFavoriteLimitNegative() {
 	})
 
 	s.Run("Заполняем избранное до лимита", func() {
-		result := favorites.BulkAddFavorites(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{AdvertisementIds: advertisementIDs})
+		result := s.favs.BulkAdd(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{AdvertisementIds: advertisementIDs})
 
 		require.Len(s.T(), result.Added, maxFavoritesPerUser, "не все объявления добавились в избранное")
 		require.False(s.T(), result.LimitReached, "limit_reached не должен быть true, пока лимит не превышен")
@@ -426,7 +423,7 @@ func (s *TestSuite) TestAddFavoriteLimitNegative() {
 	})
 
 	s.Run("Пытаемся добавить объявление сверх лимита пакетно", func() {
-		result := favorites.BulkAddFavorites(s.T(), s.actor.Token,
+		result := s.favs.BulkAdd(s.T(), s.actor.Token,
 			favModels.BulkAddFavoritesRequest{AdvertisementIds: []string{extraAdvertisement.Id}})
 
 		require.Empty(s.T(), result.Added, "объявление сверх лимита не должно добавляться")
@@ -443,7 +440,7 @@ func (s *TestSuite) TestAddFavoriteLimitNegative() {
 	s.Run("После удаления одного объявления можно добавить новое", func() {
 		favorites.DeleteFavorite(s.T(), s.actor.Token, s.ad.Id)
 
-		added := favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: extraAdvertisement.Id})
+		added := s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: extraAdvertisement.Id})
 		require.Equal(s.T(), extraAdvertisement.Id, added.Advertisement.Id, "добавилось не то объявление")
 	})
 }
@@ -451,7 +448,7 @@ func (s *TestSuite) TestAddFavoriteLimitNegative() {
 // TestDeleteFavoriteTwiceNegative проверяет, что повторное удаление возвращает 404.
 func (s *TestSuite) TestDeleteFavoriteTwiceNegative() {
 	s.Run("Добавляем и удаляем объявление из избранного", func() {
-		favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
+		s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
 		favorites.DeleteFavorite(s.T(), s.actor.Token, s.ad.Id)
 	})
 
@@ -469,7 +466,7 @@ func (s *TestSuite) TestDeleteFavoriteTwiceNegative() {
 // TestFavoritesIsolationBetweenUsers проверяет, что избранное принадлежит конкретному пользователю.
 func (s *TestSuite) TestFavoritesIsolationBetweenUsers() {
 	s.Run("Основной пользователь добавляет объявление в избранное", func() {
-		favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
+		s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: s.ad.Id})
 	})
 
 	s.Run("Другой пользователь не видит чужое избранное", func() {
@@ -510,7 +507,7 @@ func (s *TestSuite) TestGetFavoritesPagination() {
 			advertisementIDs = append(advertisementIDs, s.ads.Create(s.T(), s.owner.Token).Id)
 		}
 
-		result := favorites.BulkAddFavorites(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{AdvertisementIds: advertisementIDs})
+		result := s.favs.BulkAdd(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{AdvertisementIds: advertisementIDs})
 		require.Len(s.T(), result.Added, len(advertisementIDs), "не все объявления добавились в избранное")
 	})
 
@@ -557,7 +554,7 @@ func (s *TestSuite) TestGetFavoritesSorting() {
 
 		for i, override := range overrides {
 			ads[i] = s.ads.CreateWithParams(s.T(), s.owner.Token, override)
-			favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
+			s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
 		}
 	})
 
@@ -603,7 +600,7 @@ func (s *TestSuite) TestGetFavoritesSearch() {
 
 		for i, override := range overrides {
 			ads[i] = s.ads.CreateWithParams(s.T(), s.owner.Token, override)
-			favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
+			s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
 		}
 	})
 
@@ -644,7 +641,7 @@ func (s *TestSuite) TestGetFavoritesQuantityFilter() {
 
 		for i, override := range overrides {
 			ads[i] = s.ads.CreateWithParams(s.T(), s.owner.Token, override)
-			favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
+			s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: ads[i].Id})
 		}
 	})
 
@@ -716,14 +713,14 @@ func (s *TestSuite) TestBulkAddFavorites() {
 
 	s.Run("Готовим объявления: уже в избранном, своё", func() {
 		alreadyFavorite = s.ads.Create(s.T(), s.owner.Token)
-		favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: alreadyFavorite.Id})
+		s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: alreadyFavorite.Id})
 
 		ownAdvertisement = s.ads.Create(s.T(), s.actor.Token)
 	})
 
 	var result favModels.BulkAddFavoritesResult
 	s.Run("Пакетно добавляем новое, уже добавленное, своё и несуществующее объявления", func() {
-		result = favorites.BulkAddFavorites(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{
+		result = s.favs.BulkAdd(s.T(), s.actor.Token, favModels.BulkAddFavoritesRequest{
 			AdvertisementIds: []string{s.ad.Id, alreadyFavorite.Id, ownAdvertisement.Id, missingID},
 		})
 	})
@@ -748,12 +745,12 @@ func (s *TestSuite) TestBulkAddFavoritesIdempotent() {
 	request := favModels.BulkAddFavoritesRequest{AdvertisementIds: []string{s.ad.Id}}
 
 	s.Run("Пакетно добавляем объявление", func() {
-		result := favorites.BulkAddFavorites(s.T(), s.actor.Token, request)
+		result := s.favs.BulkAdd(s.T(), s.actor.Token, request)
 		require.Equal(s.T(), []string{s.ad.Id}, result.Added, "объявление должно добавиться")
 	})
 
 	s.Run("Повторно пакетно добавляем то же объявление", func() {
-		result := favorites.BulkAddFavorites(s.T(), s.actor.Token, request)
+		result := s.favs.BulkAdd(s.T(), s.actor.Token, request)
 
 		require.Empty(s.T(), result.Added, "повторно ничего не должно добавляться")
 		require.Equal(s.T(), []string{s.ad.Id}, result.Skipped, "объявление должно попасть в skipped")
@@ -799,7 +796,7 @@ func (s *TestSuite) TestGuestFavoritesMergeAfterLogin() {
 	s.Run("Готовим избранное аккаунта и гостевой список", func() {
 		second = s.ads.Create(s.T(), s.owner.Token)
 		alreadyFavorite = s.ads.Create(s.T(), s.owner.Token)
-		favorites.AddFavorite(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: alreadyFavorite.Id})
+		s.favs.Add(s.T(), s.actor.Token, favModels.AddFavoriteRequest{AdvertisementId: alreadyFavorite.Id})
 
 		ownAdvertisement = s.ads.Create(s.T(), s.actor.Token)
 
@@ -816,7 +813,7 @@ func (s *TestSuite) TestGuestFavoritesMergeAfterLogin() {
 
 	var firstResult favModels.BulkAddFavoritesResult
 	s.Run("Отправляем гостевой список на слияние", func() {
-		firstResult = favorites.BulkAddFavorites(s.T(), session.Token,
+		firstResult = s.favs.BulkAdd(s.T(), session.Token,
 			favModels.BulkAddFavoritesRequest{AdvertisementIds: guestIDs})
 	})
 
@@ -842,7 +839,7 @@ func (s *TestSuite) TestGuestFavoritesMergeAfterLogin() {
 
 	var secondResult favModels.BulkAddFavoritesResult
 	s.Run("Тот же гостевой список приходит со второго устройства", func() {
-		secondResult = favorites.BulkAddFavorites(s.T(), session.Token,
+		secondResult = s.favs.BulkAdd(s.T(), session.Token,
 			favModels.BulkAddFavoritesRequest{AdvertisementIds: guestIDs})
 	})
 
@@ -861,7 +858,7 @@ func (s *TestSuite) TestGuestFavoritesMergeAfterLogin() {
 
 func (s *TestSuite) TestBulkAddFavoritesDuplicateIDsInRequest() {
 	s.Run("Пакетно добавляем один и тот же id дважды", func() {
-		favorites.BulkAddFavorites(s.T(), s.actor.Token,
+		s.favs.BulkAdd(s.T(), s.actor.Token,
 			favModels.BulkAddFavoritesRequest{AdvertisementIds: []string{s.ad.Id, s.ad.Id}})
 	})
 

@@ -1,6 +1,7 @@
 package advertisement
 
 import (
+	"api-tests-template/internal/fixtures"
 	"fmt"
 	"net/http"
 	"os"
@@ -64,7 +65,7 @@ func (s *TestSuite) TearDownSuite() {
 }
 
 func (s *TestSuite) TestPostAdvertisementPositive() {
-	params := newAdvertisementParams()
+	params := fixtures.NewAdvertisementParams()
 	photos := newAdvertisementPhotos(s.currentDirName)
 
 	var advCreateResponse advModels.Advertisement
@@ -250,7 +251,7 @@ func (s *TestSuite) TestPostAdvertisementFieldValidationNegative() {
 				s.T().Skip(tc.skip)
 			}
 
-			params := newAdvertisementParams()
+			params := fixtures.NewAdvertisementParams()
 			setFormField(s.T(), params, tc.field, tc.value, tc.omit)
 
 			errResponse := advertisement.CreateAdvertisementErrorBadRequest(s.T(), s.loginData.Token, params,
@@ -302,7 +303,7 @@ func (s *TestSuite) TestPostAdvertisementPhotosNegative() {
 			}
 
 			errResponse := advertisement.CreateAdvertisementErrorBadRequest(s.T(), s.loginData.Token,
-				newAdvertisementParams(), tc.photos(s.currentDirName))
+				fixtures.NewAdvertisementParams(), tc.photos(s.currentDirName))
 
 			require.Equal(s.T(), invalidRequestError, errResponse.Error, invalidRequestErrorAssert)
 			require.Equal(s.T(), tc.wantMessage, errResponse.Message, invalidRequestMessageAssert)
@@ -314,7 +315,7 @@ func (s *TestSuite) TestPostAdvertisementInvalidPhotoFormatNegative() {
 	var errResponse advModels.CreateErrorResponse
 	s.Run("Создаём объявление с файлом .txt вместо фото", func() {
 		photos := []string{filepath.Join(s.currentDirName, "images", "incorrectImage.txt")}
-		errResponse = advertisement.CreateAdvertisementErrorBadRequest(s.T(), s.loginData.Token, newAdvertisementParams(), photos)
+		errResponse = advertisement.CreateAdvertisementErrorBadRequest(s.T(), s.loginData.Token, fixtures.NewAdvertisementParams(), photos)
 	})
 
 	s.Run("Проверяем ошибку", func() {
@@ -338,7 +339,7 @@ func (s *TestSuite) TestPostAdvertisementAuthNegative() {
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			errResponse := advertisement.CreateAdvertisementError(s.T(), tc.token, http.StatusUnauthorized,
-				newAdvertisementParams(), newAdvertisementPhotos(s.currentDirName))
+				fixtures.NewAdvertisementParams(), newAdvertisementPhotos(s.currentDirName))
 
 			require.Equal(s.T(), unauthorizedError, errResponse.Error, invalidRequestErrorAssert)
 			require.Equal(s.T(), tc.wantMessage, errResponse.Message, invalidRequestMessageAssert)
@@ -364,7 +365,7 @@ func (s *TestSuite) TestPostAdvertisementBoundaryPositive() {
 
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			params := newAdvertisementParams()
+			params := fixtures.NewAdvertisementParams()
 			setFormField(s.T(), params, tc.field, tc.value, false)
 
 			resp := advertisement.CreateAdvertisement(s.T(), s.loginData.Token, params,

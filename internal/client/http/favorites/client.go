@@ -56,3 +56,11 @@ func HttpDeleteFavorite(t *testing.T, token string, statusCode int, adID string)
 		Status(statusCode).
 		End().Response
 }
+
+// HttpDeleteFavoriteRaw выполняет DELETE /favorites/{ad_id} без проверки статуса: код ответа анализирует вызывающий
+func HttpDeleteFavoriteRaw(t *testing.T, token, adID string) *http.Response {
+	return apiRunner.GetRunner().Auth(token).Create().
+		Delete(strings.ReplaceAll(path.FavoritesByAdPath, "{ad_id}", adID)).
+		Expect(t).
+		End().Response
+}

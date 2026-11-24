@@ -79,6 +79,7 @@ func (f *AdvertisementFactory) Delete(t *testing.T, ownerToken, advertisementID 
 
 var deleteBackoff = []time.Duration{0, 200 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second}
 
+// deleteWithRetry удаляет объявление, повторяя попытки по расписанию deleteBackoff.
 func deleteWithRetry(t *testing.T, ad createdAdvertisement) error {
 	var lastErr error
 

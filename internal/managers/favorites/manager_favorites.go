@@ -2,6 +2,7 @@ package favorites
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -151,6 +152,17 @@ func DeleteFavoriteErrorNoToken(t *testing.T, adID string) advModels.CreateError
 
 func DeleteFavoriteErrorEmptyBearer(t *testing.T, adID string) advModels.CreateErrorResponse {
 	return DeleteFavoriteError(t, " ", http.StatusUnauthorized, adID)
+}
+
+// DeleteFavoriteStatus удаляет объявление из избранного и возвращает код ответа, не проверяя его
+func DeleteFavoriteStatus(t *testing.T, token, adID string) (int, error) {
+	resp := favorites.HttpDeleteFavoriteRaw(t, token, adID)
+	if resp == nil {
+		return 0, fmt.Errorf("нет ответа на DELETE /favorites/%s", adID)
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode, nil
 }
 
 func BulkAddFavorites(t *testing.T, token string, request models.BulkAddFavoritesRequest) models.BulkAddFavoritesResult {
